@@ -18,6 +18,13 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
+// ─── OpenWeatherMap Configuration ───
+// GANTI 'YOUR_API_KEY_HERE' dengan API Key asli dari OpenWeatherMap
+const OWM_API_KEY = 'c0b7803a7aa7e125c45343acca76c9d3';
+const TARGET_LAT = '1.6045';
+const TARGET_LON = '118.030';
+const OWM_URL = `https://api.openweathermap.org/data/2.5/forecast?lat=${TARGET_LAT}&lon=${TARGET_LON}&appid=${OWM_API_KEY}&units=metric&lang=id`;
+
 // ─── Global State ───
 let historyChart = null;
 let lastUpdateTime = 0;
@@ -69,7 +76,7 @@ function formatUptime(ms) {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  
+
   if (days > 0) return `${days}h ${hours % 24}j ${minutes % 60}m`;
   if (hours > 0) return `${hours}j ${minutes % 60}m`;
   if (minutes > 0) return `${minutes}m ${seconds % 60}d`;
@@ -100,23 +107,23 @@ function updateHeroSection(data) {
   // Temperature
   const temp = data.temperature;
   document.getElementById('temp-main').textContent = temp !== undefined ? Math.round(temp) : '--';
-  
+
   // Weather
   const weather = data.weather || 'Berawan';
   document.getElementById('weather-status').textContent = weather;
   document.getElementById('weather-emoji').textContent = weatherEmojis[weather] || '☁️';
-  
+
   // Details
   document.getElementById('heat-index').textContent = `${fmt(data.heatIndex)}°C`;
   document.getElementById('dew-point').textContent = `${fmt(data.dewPoint)}°C`;
   document.getElementById('bmp-temp').textContent = `${fmt(data.bmpTemperature)}°C`;
-  
+
   // Hero Stats
   document.getElementById('humidity-hero').textContent = `${fmt(data.humidity)}%`;
   document.getElementById('wind-hero').textContent = `${fmt(data.windSpeed_kmh)} km/h`;
   document.getElementById('rain-hero').textContent = `${fmt(data.rainfallToday_mm, 2)} mm`;
   document.getElementById('light-hero').textContent = `${Math.round(data.light_lux || 0)} Lux`;
-  
+
   animateValue('temp-main');
 }
 
@@ -127,15 +134,15 @@ function updateWindSection(data) {
   if (needle && degree >= 0) {
     needle.style.transform = `translate(-50%, -100%) rotate(${degree}deg)`;
   }
-  
+
   // Speed in compass center
   document.getElementById('wind-speed-compass').textContent = fmt(data.windSpeed_kmh, 0);
-  
+
   // Details
   document.getElementById('wind-direction').textContent = data.windDirection || '--';
   document.getElementById('wind-speed-ms').textContent = `${fmt(data.windSpeed_ms)} m/s`;
   document.getElementById('beaufort-desc').textContent = data.beaufortDesc || '--';
-  
+
   // Beaufort badge
   const beaufort = data.beaufort || 0;
   document.getElementById('beaufort-badge').textContent = `Beaufort ${beaufort}`;
@@ -144,17 +151,17 @@ function updateWindSection(data) {
 function updateRainSection(data) {
   const rainToday = data.rainfallToday_mm || 0;
   const weather = data.weather || 'Berawan';
-  
+
   // Rain gauge fill (max 150mm = 100%)
   const fillPercent = Math.min((rainToday / 150) * 100, 100);
   document.getElementById('rain-gauge-fill').style.height = `${fillPercent}%`;
   document.getElementById('rain-gauge-value').textContent = fmt(rainToday, 2);
-  
+
   // Status badge
   const badge = document.getElementById('rain-status-badge');
   badge.textContent = weather;
   badge.classList.toggle('raining', rainToday > 0.5);
-  
+
   // Details
   document.getElementById('rain-per-minute').textContent = `${fmt(data.rainfallPerMinute_mm, 2)} mm`;
   document.getElementById('rain-per-hour').textContent = `${fmt(data.rainfallPerHour_mm, 2)} mm`;
@@ -165,17 +172,17 @@ function updateDetailCards(data) {
   // Pressure
   document.getElementById('pressure-hpa').textContent = `${fmt(data.pressure_hPa)} hPa`;
   document.getElementById('pressure-mmhg').textContent = `${fmt(data.pressure_mmHg)} mmHg`;
-  
+
   // Light
   const lux = data.light_lux || 0;
   document.getElementById('light-lux').textContent = `${Math.round(lux)} Lux`;
   document.getElementById('light-desc').textContent = getLightDesc(lux);
-  
+
   // Humidity
   const hum = data.humidity || 0;
   document.getElementById('humidity-value').textContent = `${fmt(hum)}%`;
   document.getElementById('humidity-desc').textContent = getHumidityDesc(hum);
-  
+
   // Beaufort
   document.getElementById('beaufort-scale').textContent = data.beaufort || 0;
   document.getElementById('beaufort-text').textContent = data.beaufortDesc || 'Tenang';
@@ -183,17 +190,88 @@ function updateDetailCards(data) {
 
 function updateSystemStatus(data) {
   document.getElementById('sys-rssi').textContent = `${data.rssi || '--'} dBm`;
-  document.getElementById('sys-heap').textContent = 
+  document.getElementById('sys-heap').textContent =
     data.freeHeap ? `${(data.freeHeap / 1024).toFixed(1)} KB` : '--';
-  document.getElementById('sys-uptime').textContent = 
+  document.getElementById('sys-uptime').textContent =
     data.uptimeMs ? formatUptime(data.uptimeMs) : '--';
   document.getElementById('sys-last-update').textContent = data.time || '--';
+}
+
+// ─── Weather Forecast Integration ───
+async function updateForecast() {
+  const container = document.getElementById('forecast-container');
+  if (!container) return;
+
+  if (OWM_API_KEY === 'YOUR_API_KEY_HERE') {
+    container.innerHTML = `<div class="forecast-loading">⚠️ Masukkan API Key di app.js untuk melihat ramalan cuaca</div>`;
+    return;
+  }
+
+  try {
+    const response = await fetch(OWM_URL);
+    if (!response.ok) throw new Error('Gagal mengambil data cuaca');
+
+    const data = await response.json();
+
+    // Group 3-hour forecasts by day
+    const dailyData = {};
+    data.list.forEach(item => {
+      const date = new Date(item.dt * 1000).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
+      if (!dailyData[date]) {
+        dailyData[date] = {
+          temps: [],
+          icons: [],
+          descs: [],
+          dt: item.dt
+        };
+      }
+      dailyData[date].temps.push(item.main.temp);
+      dailyData[date].icons.push(item.weather[0].icon);
+      dailyData[date].descs.push(item.weather[0].description);
+    });
+
+    // Generate HTML for next 3 days (skip today if already late)
+    let html = '';
+    const days = Object.keys(dailyData).slice(1, 4); // Ambil 3 hari ke depan
+
+    days.forEach(day => {
+      const info = dailyData[day];
+      const maxTemp = Math.max(...info.temps);
+      const minTemp = Math.min(...info.temps);
+      const mainIcon = info.icons[Math.floor(info.icons.length / 2)];
+      const mainDesc = info.descs[Math.floor(info.descs.length / 2)];
+
+      const iconUrl = `https://openweathermap.org/img/wn/${mainIcon}@2x.png`;
+      const dayName = day.split(',')[0];
+      const dateName = day.split(',')[1];
+
+      html += `
+        <div class="forecast-item">
+          <div class="forecast-day">${dayName}</div>
+          <div class="forecast-date">${dateName}</div>
+          <img src="${iconUrl}" alt="${mainDesc}" class="forecast-icon">
+          <div class="forecast-temp">
+            <span class="temp-max">${Math.round(maxTemp)}°C</span>
+            <span class="temp-min">${Math.round(minTemp)}°C</span>
+          </div>
+          <div class="forecast-desc">${mainDesc}</div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+    console.log('[Forecast] Updated successfully');
+
+  } catch (error) {
+    console.error('[Forecast] Error:', error);
+    container.innerHTML = `<div class="forecast-loading">❌ Gagal memuat data ramalan cuaca</div>`;
+  }
 }
 
 function updateHeaderTime(data) {
   const time = data.time || '--:--:--';
   const date = data.date || '--';
-  
+
   document.getElementById('header-time').textContent = time;
   document.getElementById('header-date').textContent = date;
 }
@@ -205,11 +283,11 @@ function updateHeaderTime(data) {
 function initChart() {
   const ctx = document.getElementById('historyChart');
   if (!ctx) return;
-  
+
   // Chart.js default colors for dark theme
   Chart.defaults.color = 'rgba(255, 255, 255, 0.5)';
   Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.06)';
-  
+
   historyChart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -267,7 +345,7 @@ function initChart() {
       scales: {
         x: {
           grid: { display: false },
-          ticks: { 
+          ticks: {
             font: { size: 10, family: 'JetBrains Mono' },
             maxTicksLimit: 10
           }
@@ -305,21 +383,21 @@ function initChart() {
 
 function addChartDataPoint(data) {
   if (!historyChart) return;
-  
+
   const time = data.time || '--:--';
   const shortTime = time.substring(0, 5); // HH:MM
-  
+
   historyData.labels.push(shortTime);
   historyData.temperature.push(data.temperature || 0);
   historyData.humidity.push(data.humidity || 0);
-  
+
   // Limit data points
   if (historyData.labels.length > MAX_HISTORY_POINTS) {
     historyData.labels.shift();
     historyData.temperature.shift();
     historyData.humidity.shift();
   }
-  
+
   historyChart.update('none'); // 'none' = no animation for performance
 }
 
@@ -331,23 +409,23 @@ function loadHistoryData() {
   // Get today's date
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
-  
+
   const historyRef = database.ref(`/stations/aws_bibitan_dlj1/history/${dateStr}`);
   historyRef.orderByKey().limitToLast(MAX_HISTORY_POINTS).once('value', (snapshot) => {
     if (!snapshot.exists()) return;
-    
+
     const data = snapshot.val();
     const times = Object.keys(data).sort();
-    
+
     times.forEach(time => {
       const entry = data[time];
       const displayTime = time.replace('_', ':');
-      
+
       historyData.labels.push(displayTime);
       historyData.temperature.push(entry.t || 0);
       historyData.humidity.push(entry.h || 0);
     });
-    
+
     if (historyChart) {
       historyChart.update('none');
     }
@@ -360,19 +438,19 @@ function loadHistoryData() {
 
 function startRealtimeListener() {
   const currentRef = database.ref('/stations/aws_bibitan_dlj1/current');
-  
+
   currentRef.on('value', (snapshot) => {
     if (!snapshot.exists()) {
       console.warn('No data available');
       return;
     }
-    
+
     const data = snapshot.val();
     lastUpdateTime = Date.now();
-    
+
     // Update connection status
     setConnectionStatus(true);
-    
+
     // Update all UI sections
     updateHeroSection(data);
     updateWindSection(data);
@@ -380,16 +458,16 @@ function startRealtimeListener() {
     updateDetailCards(data);
     updateSystemStatus(data);
     updateHeaderTime(data);
-    
+
     // Add to chart
     addChartDataPoint(data);
-    
+
     console.log('[Firebase] Data received:', data.time);
   }, (error) => {
     console.error('[Firebase] Error:', error);
     setConnectionStatus(false);
   });
-  
+
   // Also load station info
   database.ref('/stations/aws_bibitan_dlj1/info').once('value', (snapshot) => {
     if (snapshot.exists()) {
@@ -407,7 +485,7 @@ function setConnectionStatus(connected) {
   isConnected = connected;
   const badge = document.getElementById('live-badge');
   const statusText = document.getElementById('connection-status');
-  
+
   if (connected) {
     badge.classList.remove('offline');
     statusText.textContent = 'LIVE';
@@ -433,7 +511,7 @@ function updateLocalClock() {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   const dateStr = now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  
+
   // Only update header clock if no Firebase data yet or data is stale
   if (!isConnected || Date.now() - lastUpdateTime > 15000) {
     document.getElementById('header-time').textContent = timeStr;
@@ -447,23 +525,27 @@ function updateLocalClock() {
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log('🌦️ AWS Bibitan DLJ1 Dashboard Starting...');
-  
+
   // Initialize chart
   initChart();
-  
+
   // Load historical data
   loadHistoryData();
-  
+
   // Start real-time listener
   startRealtimeListener();
-  
+
   // Start local clock
   updateLocalClock();
   setInterval(updateLocalClock, 1000);
-  
+
+  // Start Forecast updates (every 3 hours)
+  updateForecast();
+  setInterval(updateForecast, 3 * 60 * 60 * 1000);
+
   // Check for stale data
   setInterval(checkStaleData, 5000);
-  
+
   // Monitor Firebase connection
   database.ref('.info/connected').on('value', (snap) => {
     if (snap.val() === true) {
@@ -474,6 +556,6 @@ document.addEventListener('DOMContentLoaded', () => {
       setConnectionStatus(false);
     }
   });
-  
+
   console.log('✅ Dashboard initialized');
 });
