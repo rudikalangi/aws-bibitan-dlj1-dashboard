@@ -230,7 +230,13 @@ async function updateForecast() {
     // 1. PROSES RAMALAN 24 JAM (TIAP 1 JAM!)
     let html24h = '';
     const now = new Date();
-    const currentHourStr = now.toISOString().split('T')[0] + 'T' + now.getHours().toString().padStart(2, '0') + ':00';
+    
+    // Format waktu lokal (YYYY-MM-DDTHH:00) agar cocok dengan format Open-Meteo
+    const year = now.getFullYear();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const hour = now.getHours().toString().padStart(2, '0');
+    const currentHourStr = `${year}-${month}-${day}T${hour}:00`;
     
     // Cari index jam sekarang dalam data API
     let startIndex = data.hourly.time.findIndex(t => t >= currentHourStr);
