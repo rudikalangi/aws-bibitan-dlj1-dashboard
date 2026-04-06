@@ -199,72 +199,93 @@ function updateSystemStatus(data) {
 
 // ─── Weather Forecast Integration ───
 async function updateForecast() {
-  const container = document.getElementById('forecast-container');
-  if (!container) return;
+  const container24h = document.getElementById('forecast-24h');
+  const container5d = document.getElementById('forecast-5d');
+  if (!container24h || !container5d) return;
 
-  if (OWM_API_KEY === 'YOUR_API_KEY_HERE') {
-    container.innerHTML = `<div class="forecast-loading">⚠️ Masukkan API Key di app.js untuk melihat ramalan cuaca</div>`;
+  if (OWM_API_KEY === 'YOUR_API_KEY_HERE' || !OWM_API_KEY) {
+    container24h.innerHTML = `<div class="forecast-loading">⚠️ Masukkan API Key</div>`;
+    container5d.innerHTML = `<div class="forecast-loading">⚠️ Masukkan API Key</div>`;
     return;
   }
 
   try {
     const response = await fetch(OWM_URL);
     if (!response.ok) throw new Error('Gagal mengambil data cuaca');
-
     const data = await response.json();
 
-    // Group 3-hour forecasts by day
-    const dailyData = {};
-    data.list.forEach(item => {
-      const date = new Date(item.dt * 1000).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
-      if (!dailyData[date]) {
-        dailyData[date] = {
-          temps: [],
-          icons: [],
-          descs: [],
-          dt: item.dt
-        };
-      }
-      dailyData[date].temps.push(item.main.temp);
-      dailyData[date].icons.push(item.weather[0].icon);
-      dailyData[date].descs.push(item.weather[0].description);
-    });
+    // 1. PROSES RAMALAN 24 JAM (Ambil 10 data pertama = ~30 jam)
+    let html24h = '';
+    data.list.slice(0, 10).forEach((item, index) => {
+      const time = new Date(item.dt * 1000);
+      let timeLabel = time.getHours().toString().padStart(2, '0') + ':00';
+      if (index === 0) timeLabel = 'Sekarang';
 
-    // Generate HTML for next 3 days (skip today if already late)
-    let html = '';
-    const days = Object.keys(dailyData).slice(1, 4); // Ambil 3 hari ke depan
+      const iconUrl = `https://openweathermap.org/img/wn/${item.weather[0].icon}.png`;
+      const temp = Math.round(item.main.temp);
+      const wind = Math.round(item.wind.speed * 3.6); // m/s to km/h
 
-    days.forEach(day => {
-      const info = dailyData[day];
-      const maxTemp = Math.max(...info.temps);
-      const minTemp = Math.min(...info.temps);
-      const mainIcon = info.icons[Math.floor(info.icons.length / 2)];
-      const mainDesc = info.descs[Math.floor(info.descs.length / 2)];
-
-      const iconUrl = `https://openweathermap.org/img/wn/${mainIcon}@2x.png`;
-      const dayName = day.split(',')[0];
-      const dateName = day.split(',')[1];
-
-      html += `
-        <div class="forecast-item">
-          <div class="forecast-day">${dayName}</div>
-          <div class="forecast-date">${dateName}</div>
-          <img src="${iconUrl}" alt="${mainDesc}" class="forecast-icon">
-          <div class="forecast-temp">
-            <span class="temp-max">${Math.round(maxTemp)}°C</span>
-            <span class="temp-min">${Math.round(minTemp)}°C</span>
-          </div>
-          <div class="forecast-desc">${mainDesc}</div>
+      html24h += `
+        <div class="f24-item">
+          <span class="f24-time">${timeLabel}</span>
+          <img src="${iconUrl}" class="f24-icon" alt="icon">
+          <span class="f24-temp">${temp}°</span>
+          <span class="f24-wind">${wind} km/j</span>
         </div>
       `;
     });
+    container24h.innerHTML = html24h;
 
-    container.innerHTML = html;
-    console.log('[Forecast] Updated successfully');
+    // 2. PROSES RAMALAN 5 HARI (Agregasi per hari)
+    const dailyMap = {};
+    data.list.forEach(item => {
+      const date = new Date(item.dt * 1000).toLocaleDateString('id-ID', { weekday: 'short' });
+      if (!dailyMap[date]) {
+        dailyMap[date] = { min: item.main.temp, max: item.main.temp, icons: [] };
+      }
+      dailyMap[date].min = Math.min(dailyMap[date].min, item.main.temp);
+      dailyMap[date].max = Math.max(dailyMap[date].max, item.main.temp);
+      dailyMap[date].icons.push(item.weather[0].icon);
+    });
+
+    // Hitung range suhu global untuk skala bar
+    const days = Object.keys(dailyMap);
+    const globalMin = Math.min(...days.map(d => dailyMap[d].min));
+    const globalMax = Math.max(...days.map(d => dailyMap[d].max));
+    const globalRange = globalMax - globalMin;
+
+    let html5d = '';
+    days.forEach((day, index) => {
+      const info = dailyMap[day];
+      let dayLabel = day;
+      if (index === 0) dayLabel = 'Hari ini';
+      if (index === 1) dayLabel = 'Besok';
+
+      const mainIcon = info.icons[Math.floor(info.icons.length / 2)];
+      const iconUrl = `https://openweathermap.org/img/wn/${mainIcon}.png`;
+
+      // Hitung posisi bar (persentase)
+      const left = ((info.min - globalMin) / globalRange) * 100;
+      const width = ((info.max - info.min) / globalRange) * 100;
+
+      html5d += `
+        <div class="f5d-row">
+          <span class="f5d-day">${dayLabel}</span>
+          <img src="${iconUrl}" class="f5d-icon" alt="icon">
+          <span class="f5d-min">${Math.round(info.min)}°</span>
+          <div class="f5d-bar-container">
+            <div class="f5d-bar-fill" style="left: ${left}%; width: ${Math.max(width, 5)}%"></div>
+          </div>
+          <span class="f5d-max">${Math.round(info.max)}°</span>
+        </div>
+      `;
+    });
+    container5d.innerHTML = html5d;
 
   } catch (error) {
     console.error('[Forecast] Error:', error);
-    container.innerHTML = `<div class="forecast-loading">❌ Gagal memuat data ramalan cuaca</div>`;
+    container24h.innerHTML = `<div class="forecast-loading">❌ Gagal</div>`;
+    container5d.innerHTML = `<div class="forecast-loading">❌ Gagal</div>`;
   }
 }
 

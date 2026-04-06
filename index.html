@@ -197,15 +197,25 @@
       </div>
     </section>
 
-    <!-- ─── FORECAST: Ramalan Cuaca ─── -->
+    <!-- ─── FORECAST: Ramalan Cuaca Premium ─── -->
     <section class="card forecast-card" id="forecast-section">
       <div class="card-header">
-        <h2>📅 Ramalan Cuaca (3 Hari)</h2>
+        <h2>🌦️ Ramalan Cuaca Berau</h2>
         <span class="card-badge">OpenWeatherMap</span>
       </div>
-      <div class="forecast-container" id="forecast-container">
-        <!-- Kartu ramalan akan dibuat otomatis oleh app.js -->
-        <div class="forecast-loading">Memuat ramalan cuaca...</div>
+      
+      <!-- Ramalan 24 Jam (Horizontal Scroll) -->
+      <div class="forecast-sub-header">🕒 Ramalan 24 Jam</div>
+      <div class="forecast-24h" id="forecast-24h">
+        <div class="forecast-loading">Memuat ramalan per jam...</div>
+      </div>
+
+      <!-- Ramalan 5 Hari (Vertical List) -->
+      <div class="forecast-bottom-section">
+        <div class="forecast-sub-header">📅 Ramalan 5 Hari</div>
+        <div class="forecast-5d" id="forecast-5d">
+          <div class="forecast-loading">Memuat ramalan harian...</div>
+        </div>
       </div>
     </section>
 
