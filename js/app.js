@@ -18,12 +18,25 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
-// ─── OpenWeatherMap Configuration ───
-// GANTI 'YOUR_API_KEY_HERE' dengan API Key asli dari OpenWeatherMap
-const OWM_API_KEY = 'c0b7803a7aa7e125c45343acca76c9d3';
+// ─── Weather Forecast Configuration (Open-Meteo) ───
+// Lokasi: Biatan, Berau (Lat: 1.6045, Lon: 118.030)
 const TARGET_LAT = '1.6045';
 const TARGET_LON = '118.030';
-const OWM_URL = `https://api.openweathermap.org/data/2.5/forecast?lat=${TARGET_LAT}&lon=${TARGET_LON}&appid=${OWM_API_KEY}&units=metric&lang=id`;
+const METEO_URL = `https://api.open-meteo.com/v1/forecast?latitude=${TARGET_LAT}&longitude=${TARGET_LON}&hourly=temperature_2m,weathercode,windspeed_10m&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Asia%2FSingapore`;
+
+// Mapping WMO weather codes to OWM icons
+function mapWmoToIcon(code, isDay = true) {
+  const d = isDay ? 'd' : 'n';
+  if (code === 0) return `01${d}`; // Clear
+  if (code <= 3) return `02${d}`;  // Partly Cloudy
+  if (code === 45 || code === 48) return `50${d}`; // Fog
+  if (code <= 55) return `09d`;    // Drizzle
+  if (code <= 65) return `10d`;    // Rain
+  if (code <= 75) return `13d`;    // Snow
+  if (code <= 82) return `09d`;    // Showers
+  if (code <= 99) return `11d`;    // Thunderstorm
+  return `03${d}`;
+}
 
 // ─── Global State ───
 let historyChart = null;
@@ -197,33 +210,40 @@ function updateSystemStatus(data) {
   document.getElementById('sys-last-update').textContent = data.time || '--';
 }
 
-// ─── Weather Forecast Integration ───
+// ─── Weather Forecast Integration (Open-Meteo) ───
 async function updateForecast() {
   const container24h = document.getElementById('forecast-24h');
   const container5d = document.getElementById('forecast-5d');
   if (!container24h || !container5d) return;
 
-  if (OWM_API_KEY === 'YOUR_API_KEY_HERE' || !OWM_API_KEY) {
-    container24h.innerHTML = `<div class="forecast-loading">⚠️ Masukkan API Key</div>`;
-    container5d.innerHTML = `<div class="forecast-loading">⚠️ Masukkan API Key</div>`;
-    return;
-  }
-
   try {
-    const response = await fetch(OWM_URL);
-    if (!response.ok) throw new Error('Gagal mengambil data cuaca');
+    // Tambahkan timeout 8 detik agar tidak stuck di mobile
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const response = await fetch(METEO_URL, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) throw new Error('Weather API Error');
     const data = await response.json();
 
-    // 1. PROSES RAMALAN 24 JAM (Ambil 10 data pertama = ~30 jam)
+    // 1. PROSES RAMALAN 24 JAM (TIAP 1 JAM!)
     let html24h = '';
-    data.list.slice(0, 10).forEach((item, index) => {
-      const time = new Date(item.dt * 1000);
-      let timeLabel = time.getHours().toString().padStart(2, '0') + ':00';
-      if (index === 0) timeLabel = 'Sekarang';
+    const now = new Date();
+    const currentHour = now.getHours();
 
-      const iconUrl = `https://openweathermap.org/img/wn/${item.weather[0].icon}.png`;
-      const temp = Math.round(item.main.temp);
-      const wind = Math.round(item.wind.speed * 3.6); // m/s to km/h
+    for (let i = 0; i < 24; i++) {
+      const timeStr = data.hourly.time[i];
+      const time = new Date(timeStr);
+      let timeLabel = time.getHours().toString().padStart(2, '0') + ':00';
+      if (i === 0) timeLabel = 'Sekarang';
+
+      const code = data.hourly.weathercode[i];
+      const hour = time.getHours();
+      const isDay = hour >= 6 && hour <= 18;
+      const iconUrl = `https://openweathermap.org/img/wn/${mapWmoToIcon(code, isDay)}.png`;
+      const temp = Math.round(data.hourly.temperature_2m[i]);
+      const wind = Math.round(data.hourly.windspeed_10m[i]);
 
       html24h += `
         <div class="f24-item">
@@ -233,59 +253,52 @@ async function updateForecast() {
           <span class="f24-wind">${wind} km/j</span>
         </div>
       `;
-    });
+    }
     container24h.innerHTML = html24h;
 
-    // 2. PROSES RAMALAN 5 HARI (Agregasi per hari)
-    const dailyMap = {};
-    data.list.forEach(item => {
-      const date = new Date(item.dt * 1000).toLocaleDateString('id-ID', { weekday: 'short' });
-      if (!dailyMap[date]) {
-        dailyMap[date] = { min: item.main.temp, max: item.main.temp, icons: [] };
-      }
-      dailyMap[date].min = Math.min(dailyMap[date].min, item.main.temp);
-      dailyMap[date].max = Math.max(dailyMap[date].max, item.main.temp);
-      dailyMap[date].icons.push(item.weather[0].icon);
-    });
-
-    // Hitung range suhu global untuk skala bar
-    const days = Object.keys(dailyMap);
-    const globalMin = Math.min(...days.map(d => dailyMap[d].min));
-    const globalMax = Math.max(...days.map(d => dailyMap[d].max));
+    // 2. PROSES RAMALAN 5 HARI (DAILY)
+    const daily = data.daily;
+    const globalMin = Math.min(...daily.temperature_2m_min);
+    const globalMax = Math.max(...daily.temperature_2m_max);
     const globalRange = globalMax - globalMin;
 
     let html5d = '';
-    days.forEach((day, index) => {
-      const info = dailyMap[day];
-      let dayLabel = day;
-      if (index === 0) dayLabel = 'Hari ini';
-      if (index === 1) dayLabel = 'Besok';
+    for (let i = 0; i < 6; i++) {
+        const date = new Date(daily.time[i]);
+        let dayLabel = date.toLocaleDateString('id-ID', { weekday: 'short' });
+        if (i === 0) dayLabel = 'Hari ini';
+        if (i === 1) dayLabel = 'Besok';
 
-      const mainIcon = info.icons[Math.floor(info.icons.length / 2)];
-      const iconUrl = `https://openweathermap.org/img/wn/${mainIcon}.png`;
+        const code = daily.weathercode[i];
+        const iconUrl = `https://openweathermap.org/img/wn/${mapWmoToIcon(code, true)}.png`;
+        const min = daily.temperature_2m_min[i];
+        const max = daily.temperature_2m_max[i];
 
-      // Hitung posisi bar (persentase)
-      const left = ((info.min - globalMin) / globalRange) * 100;
-      const width = ((info.max - info.min) / globalRange) * 100;
+        const left = ((min - globalMin) / globalRange) * 100;
+        const width = ((max - min) / globalRange) * 100;
 
-      html5d += `
-        <div class="f5d-row">
-          <span class="f5d-day">${dayLabel}</span>
-          <img src="${iconUrl}" class="f5d-icon" alt="icon">
-          <span class="f5d-min">${Math.round(info.min)}°</span>
-          <div class="f5d-bar-container">
-            <div class="f5d-bar-fill" style="left: ${left}%; width: ${Math.max(width, 5)}%"></div>
+        html5d += `
+          <div class="f5d-row">
+            <span class="f5d-day">${dayLabel}</span>
+            <img src="${iconUrl}" class="f5d-icon" alt="icon">
+            <span class="f5d-min">${Math.round(min)}°</span>
+            <div class="f5d-bar-container">
+              <div class="f5d-bar-fill" style="left: ${left}%; width: ${Math.max(width, 5)}%"></div>
+            </div>
+            <span class="f5d-max">${Math.round(max)}°</span>
           </div>
-          <span class="f5d-max">${Math.round(info.max)}°</span>
-        </div>
-      `;
-    });
+        `;
+    }
     container5d.innerHTML = html5d;
+    console.log('[Forecast] Open-Meteo updated successfully');
 
   } catch (error) {
     console.error('[Forecast] Error:', error);
-    container24h.innerHTML = `<div class="forecast-loading">❌ Gagal</div>`;
-    container5d.innerHTML = `<div class="forecast-loading">❌ Gagal</div>`;
+    if (error.name === 'AbortError') {
+      container24h.innerHTML = `<div class="forecast-loading">⌛ Timeout (Sinyal Lemah)</div>`;
+    } else {
+      container24h.innerHTML = `<div class="forecast-loading">❌ Gagal</div>`;
+    }
   }
 }
 
