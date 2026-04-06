@@ -230,13 +230,20 @@ async function updateForecast() {
     // 1. PROSES RAMALAN 24 JAM (TIAP 1 JAM!)
     let html24h = '';
     const now = new Date();
-    const currentHour = now.getHours();
+    const currentHourStr = now.toISOString().split('T')[0] + 'T' + now.getHours().toString().padStart(2, '0') + ':00';
+    
+    // Cari index jam sekarang dalam data API
+    let startIndex = data.hourly.time.findIndex(t => t >= currentHourStr);
+    if (startIndex === -1) startIndex = 0;
 
-    for (let i = 0; i < 24; i++) {
+    // Tampilkan 24 jam ke depan mulai dari startIndex
+    for (let i = startIndex; i < startIndex + 24; i++) {
+      if (i >= data.hourly.time.length) break;
+
       const timeStr = data.hourly.time[i];
       const time = new Date(timeStr);
       let timeLabel = time.getHours().toString().padStart(2, '0') + ':00';
-      if (i === 0) timeLabel = 'Sekarang';
+      if (i === startIndex) timeLabel = 'Sekarang';
 
       const code = data.hourly.weathercode[i];
       const hour = time.getHours();
