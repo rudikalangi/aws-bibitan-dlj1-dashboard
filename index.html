@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWS Bibitan DLJ1 — Weather Station Dashboard</title>
+  <meta name="description" content="Real-time weather monitoring dashboard for AWS Bibitan DLJ1, Kalimantan Timur, Biatan Ulu. Monitoring suhu, kelembaban, angin, curah hujan, tekanan udara, dan intensitas cahaya.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌦️</text></svg>">
+  
+  <!-- CSS -->
+  <link rel="stylesheet" href="css/style.css">
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- ═══════════ HEADER ═══════════ -->
+  <header id="header">
+    <div class="header-left">
+      <div class="station-icon">🌦️</div>
+      <div class="station-info">
+        <h1 id="station-name">AWS Bibitan DLJ1</h1>
+        <p id="station-location">📍 Kalimantan Timur, Biatan Ulu</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="live-badge" id="live-badge">
+        <span class="live-dot"></span>
+        <span id="connection-status">Menghubungkan...</span>
+      </div>
+      <div class="header-time" id="header-time">--:--:--</div>
+      <div class="header-date" id="header-date">-- --- ----</div>
+    </div>
+  </header>
+
+  <!-- ═══════════ MAIN CONTENT ═══════════ -->
+  <main class="dashboard">
+
+    <!-- ─── HERO: Suhu Utama + Cuaca ─── -->
+    <section class="hero-card" id="hero-section">
+      <div class="hero-weather">
+        <span class="weather-emoji" id="weather-emoji">☁️</span>
+        <span class="weather-status" id="weather-status">Berawan</span>
+      </div>
+      <div class="hero-temp-container">
+        <div class="hero-temp">
+          <span class="temp-value" id="temp-main">--</span>
+          <span class="temp-unit">°C</span>
+        </div>
+        <div class="hero-details">
+          <div class="hero-detail-item">
+            <span class="detail-label">Terasa</span>
+            <span class="detail-value" id="heat-index">--°C</span>
+          </div>
+          <div class="hero-detail-item">
+            <span class="detail-label">Titik Embun</span>
+            <span class="detail-value" id="dew-point">--°C</span>
+          </div>
+          <div class="hero-detail-item">
+            <span class="detail-label">BMP280</span>
+            <span class="detail-value" id="bmp-temp">--°C</span>
+          </div>
+        </div>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="stat-icon">💧</span>
+          <span class="stat-value" id="humidity-hero">--%</span>
+          <span class="stat-label">Kelembaban</span>
+        </div>
+        <div class="hero-stat">
+          <span class="stat-icon">🌬️</span>
+          <span class="stat-value" id="wind-hero">-- km/h</span>
+          <span class="stat-label">Angin</span>
+        </div>
+        <div class="hero-stat">
+          <span class="stat-icon">🌧️</span>
+          <span class="stat-value" id="rain-hero">-- mm</span>
+          <span class="stat-label">Hujan Hari Ini</span>
+        </div>
+        <div class="hero-stat">
+          <span class="stat-icon">☀️</span>
+          <span class="stat-value" id="light-hero">-- Lux</span>
+          <span class="stat-label">Cahaya</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── ROW: Angin + Curah Hujan ─── -->
+    <div class="card-row">
+
+      <!-- Angin -->
+      <section class="card wind-card" id="wind-section">
+        <div class="card-header">
+          <h2>🌬️ Angin</h2>
+          <span class="card-badge" id="beaufort-badge">Beaufort 0</span>
+        </div>
+        <div class="wind-content">
+          <div class="compass" id="compass">
+            <div class="compass-ring">
+              <span class="compass-dir compass-n">U</span>
+              <span class="compass-dir compass-e">T</span>
+              <span class="compass-dir compass-s">S</span>
+              <span class="compass-dir compass-w">B</span>
+              <span class="compass-dir compass-ne">TL</span>
+              <span class="compass-dir compass-se">TG</span>
+              <span class="compass-dir compass-sw">BD</span>
+              <span class="compass-dir compass-nw">BL</span>
+            </div>
+            <div class="compass-needle" id="compass-needle"></div>
+            <div class="compass-center">
+              <span class="compass-speed" id="wind-speed-compass">0</span>
+              <span class="compass-speed-unit">km/h</span>
+            </div>
+          </div>
+          <div class="wind-details">
+            <div class="wind-detail-row">
+              <span class="wd-label">Arah</span>
+              <span class="wd-value" id="wind-direction">--</span>
+            </div>
+            <div class="wind-detail-row">
+              <span class="wd-label">Kecepatan</span>
+              <span class="wd-value" id="wind-speed-ms">-- m/s</span>
+            </div>
+            <div class="wind-detail-row">
+              <span class="wd-label">Skala</span>
+              <span class="wd-value" id="beaufort-desc">--</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Curah Hujan -->
+      <section class="card rain-card" id="rain-section">
+        <div class="card-header">
+          <h2>🌧️ Curah Hujan</h2>
+          <span class="card-badge rain-badge" id="rain-status-badge">Berawan</span>
+        </div>
+        <div class="rain-content">
+          <div class="rain-main">
+            <div class="rain-gauge-visual">
+              <div class="rain-gauge-fill" id="rain-gauge-fill"></div>
+              <div class="rain-gauge-value" id="rain-gauge-value">0.00</div>
+              <div class="rain-gauge-label">mm hari ini</div>
+            </div>
+          </div>
+          <div class="rain-details">
+            <div class="rain-detail-item">
+              <div class="rain-detail-icon">⏱️</div>
+              <div class="rain-detail-info">
+                <span class="rd-value" id="rain-per-minute">0.00 mm</span>
+                <span class="rd-label">Per Menit</span>
+              </div>
+            </div>
+            <div class="rain-detail-item">
+              <div class="rain-detail-icon">🕐</div>
+              <div class="rain-detail-info">
+                <span class="rd-value" id="rain-per-hour">0.00 mm</span>
+                <span class="rd-label">Per Jam</span>
+              </div>
+            </div>
+            <div class="rain-detail-item">
+              <div class="rain-detail-icon">📅</div>
+              <div class="rain-detail-info">
+                <span class="rd-value" id="rain-today">0.00 mm</span>
+                <span class="rd-label">Hari Ini</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ─── CHART: Grafik Historis ─── -->
+    <section class="card chart-card" id="chart-section">
+      <div class="card-header">
+        <h2>📊 Grafik Historis</h2>
+        <div class="chart-legend">
+          <span class="legend-item legend-temp">🌡️ Suhu</span>
+          <span class="legend-item legend-hum">💧 Kelembaban</span>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas id="historyChart"></canvas>
+      </div>
+    </section>
+
+    <!-- ─── GRID: Detail Cards ─── -->
+    <div class="detail-grid">
+      
+      <!-- Tekanan Udara -->
+      <div class="card detail-card" id="pressure-card">
+        <div class="detail-icon">🌡️</div>
+        <div class="detail-title">Tekanan Udara</div>
+        <div class="detail-main" id="pressure-hpa">-- hPa</div>
+        <div class="detail-sub" id="pressure-mmhg">-- mmHg</div>
+      </div>
+
+      <!-- Intensitas Cahaya -->
+      <div class="card detail-card" id="light-card">
+        <div class="detail-icon">☀️</div>
+        <div class="detail-title">Intensitas Cahaya</div>
+        <div class="detail-main" id="light-lux">-- Lux</div>
+        <div class="detail-sub" id="light-desc">--</div>
+      </div>
+
+      <!-- Kelembaban -->
+      <div class="card detail-card" id="humidity-card">
+        <div class="detail-icon">💧</div>
+        <div class="detail-title">Kelembaban</div>
+        <div class="detail-main" id="humidity-value">--%</div>
+        <div class="detail-sub" id="humidity-desc">--</div>
+      </div>
+
+      <!-- Beaufort Scale -->
+      <div class="card detail-card" id="beaufort-card">
+        <div class="detail-icon">🌀</div>
+        <div class="detail-title">Skala Beaufort</div>
+        <div class="detail-main" id="beaufort-scale">0</div>
+        <div class="detail-sub" id="beaufort-text">Tenang</div>
+      </div>
+    </div>
+
+    <!-- ─── SYSTEM STATUS ─── -->
+    <section class="card system-card" id="system-section">
+      <div class="card-header">
+        <h2>⚡ Status Sistem</h2>
+      </div>
+      <div class="system-grid">
+        <div class="system-item">
+          <span class="sys-label">WiFi RSSI</span>
+          <span class="sys-value" id="sys-rssi">-- dBm</span>
+        </div>
+        <div class="system-item">
+          <span class="sys-label">Firebase</span>
+          <span class="sys-value" id="sys-firebase">--</span>
+        </div>
+        <div class="system-item">
+          <span class="sys-label">Free Heap</span>
+          <span class="sys-value" id="sys-heap">-- KB</span>
+        </div>
+        <div class="system-item">
+          <span class="sys-label">Uptime</span>
+          <span class="sys-value" id="sys-uptime">--</span>
+        </div>
+        <div class="system-item">
+          <span class="sys-label">Terakhir Update</span>
+          <span class="sys-value" id="sys-last-update">--</span>
+        </div>
+        <div class="system-item">
+          <span class="sys-label">IP Address</span>
+          <span class="sys-value" id="sys-ip">--</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════ FOOTER ═══════════ -->
+  <footer>
+    <p>AWS Bibitan DLJ1 &copy; 2026 — Weather Station Dashboard</p>
+    <p class="footer-sub">ESP32 + Firebase RTDB | Kalimantan Timur, Biatan Ulu</p>
+  </footer>
+
+  <!-- JavaScript -->
+  <script src="js/app.js"></script>
+</body>
+</html>
