@@ -307,11 +307,15 @@ async function updateForecast() {
 
   } catch (error) {
     console.error('[Forecast] Error:', error);
-    if (error.name === 'AbortError') {
-      container24h.innerHTML = `<div class="forecast-loading">⌛ Timeout (Sinyal Lemah)</div>`;
-    } else {
-      container24h.innerHTML = `<div class="forecast-loading">❌ Gagal</div>`;
-    }
+    const errorMsg = error.name === 'AbortError' 
+      ? '⌛ Timeout (Sinyal Lemah)' 
+      : '❌ Gagal memuat data';
+    
+    container24h.innerHTML = `<div class="forecast-loading">${errorMsg}</div>`;
+    container5d.innerHTML = `<div class="forecast-loading">${errorMsg}</div>`;
+    
+    // Coba lagi otomatis setelah 30 detik jika gagal
+    setTimeout(updateForecast, 30000);
   }
 }
 
